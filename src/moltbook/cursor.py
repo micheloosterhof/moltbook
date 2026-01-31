@@ -96,13 +96,21 @@ class FeedCursor:
         seen = set(src["seen_ids"])
         return [p for p in posts if p.get("id") not in seen]
 
-    def catch_up(self, source=None):
+    def catch_up(self, source=None, posts=None):
         """Mark everything as seen (nn's -a0 equivalent).
 
-        If source is given, only that source is caught up.
-        If source is None, all sources are marked with current timestamp.
+        Args:
+            source: if given, only that source is caught up.
+                    If None, all sources are updated.
+            posts: if given, mark these post IDs as seen.
+                   Without posts, only the timestamp is updated.
         """
         now = datetime.now(timezone.utc).isoformat()
+        if posts:
+            if source:
+                self.mark_seen(posts, source=source)
+            else:
+                self.mark_seen(posts, source="default")
         if source:
             src = self._source(source)
             src["last_checked"] = now

@@ -86,6 +86,21 @@ class TestFeedCursorCatchUp(unittest.TestCase):
         self.assertIsNotNone(stats["hot"]["last_checked"])
         self.assertIsNotNone(stats["new"]["last_checked"])
 
+    def test_catch_up_with_posts_marks_seen(self):
+        cursor = FeedCursor(self.path)
+        posts = _posts(5)
+        cursor.catch_up(source="hot", posts=posts)
+        result = cursor.unseen(posts, source="hot")
+        self.assertEqual(len(result), 0)
+
+    def test_catch_up_with_posts_no_source(self):
+        cursor = FeedCursor(self.path)
+        posts = _posts(3)
+        cursor.catch_up(posts=posts)
+        # Posts marked under "default" source
+        result = cursor.unseen(posts, source="default")
+        self.assertEqual(len(result), 0)
+
 
 class TestFeedCursorReset(unittest.TestCase):
     def setUp(self):

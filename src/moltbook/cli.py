@@ -123,8 +123,17 @@ def _run(args):
     elif cmd == "brief":
         tracker = ConversationTracker(client)
         ff = FeedFilter()
+        fr = FeedRules()
+        cursor = FeedCursor()
         monitor = PartnerMonitor(client)
-        session = Session(client, tracker, feed_filter=ff, partner_monitor=monitor)
+        session = Session(
+            client,
+            tracker,
+            feed_filter=ff,
+            partner_monitor=monitor,
+            feed_rules=fr,
+            feed_cursor=cursor,
+        )
         result = session.start()
 
     elif cmd == "post":
@@ -362,13 +371,18 @@ def _run(args):
         sort = rest[0] if len(rest) > 0 else "hot"
         limit = int(rest[1]) if len(rest) > 1 else 25
         data = client.feed(sort=sort, limit=limit)
+        posts = data.get("posts", [])
+        total = len(posts)
         ff = FeedFilter()
-        clean = ff.filter_posts(data.get("posts", []))
-        removed = len(data.get("posts", [])) - len(clean)
-        print(oneline_feed(clean))
+        posts = ff.filter_posts(posts)
+        fr = FeedRules()
+        rule_result = fr.apply(posts)
+        posts = rule_result["keep"]
+        removed = total - len(posts)
+        print(oneline_feed(posts))
         if removed:
             print(
-                f"\n({removed} posts from blocked authors filtered out)",
+                f"\n({removed} posts filtered out by blocklist/rules)",
                 file=sys.stderr,
             )
         return
@@ -417,8 +431,11 @@ def _run(args):
 
     elif cmd == "catch-up":
         cursor = FeedCursor()
-        cursor.catch_up()
-        print("Marked all feeds as caught up.")
+        hot = client.feed(sort="hot", limit=25).get("posts", [])
+        new = client.feed(sort="new", limit=25).get("posts", [])
+        cursor.catch_up(source="hot", posts=hot)
+        cursor.catch_up(source="new", posts=new)
+        print(f"Marked {len(hot)} hot + {len(new)} new posts as seen.")
         return
 
     elif cmd == "unseen":
@@ -426,14 +443,23 @@ def _run(args):
         limit = int(rest[1]) if len(rest) > 1 else 25
         data = client.feed(sort=sort, limit=limit)
         posts = data.get("posts", [])
+        total = len(posts)
+        ff = FeedFilter()
+        posts = ff.filter_posts(posts)
+        fr = FeedRules()
+        posts = fr.apply(posts)["keep"]
         cursor = FeedCursor()
         unseen = cursor.unseen(posts, source=sort)
+        filtered = total - len(posts)
+        seen = len(posts) - len(unseen)
         print(oneline_feed(unseen))
-        if len(unseen) < len(posts):
-            print(
-                f"\n({len(posts) - len(unseen)} previously seen posts hidden)",
-                file=sys.stderr,
-            )
+        parts = []
+        if filtered:
+            parts.append(f"{filtered} filtered")
+        if seen:
+            parts.append(f"{seen} previously seen")
+        if parts:
+            print(f"\n({', '.join(parts)})", file=sys.stderr)
         cursor.mark_seen(posts, source=sort)
         return
 

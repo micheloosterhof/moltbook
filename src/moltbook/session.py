@@ -88,6 +88,8 @@ class Session:
         brief["feed_new"] = summarize_posts(new_posts)
         brief["unseen_hot"] = summarize_posts(unseen_hot)
         brief["unseen_new"] = summarize_posts(unseen_new)
+        brief["unseen_hot_count"] = len(unseen_hot)
+        brief["unseen_new_count"] = len(unseen_new)
         brief["selected"] = summarize_posts(selected)
         brief["filtered_count"] = filtered_count
         brief["killed_count"] = killed_count
@@ -106,9 +108,13 @@ class Session:
         return brief
 
     def catch_up(self, source=None):
-        """Mark all feed content as seen. Delegates to feed_cursor."""
-        if self.feed_cursor:
-            self.feed_cursor.catch_up(source=source)
+        """Mark all current feed content as seen. Fetches feeds and records IDs."""
+        if not self.feed_cursor:
+            return
+        hot_posts = self.client.feed(sort="hot", limit=25).get("posts", [])
+        new_posts = self.client.feed(sort="new", limit=25).get("posts", [])
+        self.feed_cursor.catch_up(source="hot", posts=hot_posts)
+        self.feed_cursor.catch_up(source="new", posts=new_posts)
 
     def read_post(self, post_id):
         """Fetch a post with comments in a compact format.
