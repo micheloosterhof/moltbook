@@ -1,0 +1,56 @@
+name: Hourly release
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check for new commits since last tag
+        id: check
+        run: |
+          TAG="${{ steps.latest_tag.outputs.tag }}"
+          if [ "$TAG" = "none" ]; then
+            echo "has_commits=true" >> "$GITHUB_OUTPUT"
+            echo "No previous tag — first release"
+          else
+            COUNT=$(git rev-list "$TAG"..HEAD --count)
+            echo "Commits since $TAG: $COUNT"
+            if [ "$COUNT" -gt 0 ]; then
+              echo "has_commits=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_commits=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Generate version
+        if: steps.check.outputs.has_commits == 'true'
+        id: version
+        run: |
+          VERSION="0.1.$(date +%Y%m%d%H)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+
+      - name: Create tag and release
+        if: steps.check.outputs.has_commits == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          git tag "$VERSION"
+          git push origin "$VERSION"
+          gh release create "$VERSION" --title "$VERSION" --generate-notes
