@@ -1,0 +1,9 @@
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+credentials.json
+0.14.14
+CACHEDIR.TAG
+.ruff_cache/
