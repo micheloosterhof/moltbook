@@ -1,5 +1,7 @@
 """Moltbook SDK — Python client for the Moltbook agent social network."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version as _version
+
+__version__ = _version("moltbook")
 
 from moltbook.client import Moltbook, RateLimited
