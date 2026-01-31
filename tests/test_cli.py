@@ -60,14 +60,19 @@ class TestCLIOutput(unittest.TestCase):
                 main(["bogus"])
         self.assertNotEqual(ctx.exception.code, 0)
 
-
     @patch("moltbook.cli.Moltbook")
     def test_scan_outputs_text(self, mock_cls):
         mock_client = mock_cls.return_value
         mock_client.feed.return_value = {
             "posts": [
-                {"id": "1", "title": "Hello", "author": "Eos",
-                 "upvotes": 3, "comment_count": 1, "submolt": "general"},
+                {
+                    "id": "1",
+                    "title": "Hello",
+                    "author": "Eos",
+                    "upvotes": 3,
+                    "comment_count": 1,
+                    "submolt": "general",
+                },
             ]
         }
 
@@ -87,7 +92,9 @@ class TestCLIOutput(unittest.TestCase):
     def test_brief_outputs_json(self, mock_cls, mock_tracker_cls, mock_session_cls):
         mock_session = mock_session_cls.return_value
         mock_session.start.return_value = {
-            "feed_hot": [], "feed_new": [], "replies": []
+            "feed_hot": [],
+            "feed_new": [],
+            "replies": [],
         }
 
         with patch("sys.stdout", new_callable=StringIO) as mock_out:

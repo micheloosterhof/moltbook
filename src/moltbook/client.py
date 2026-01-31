@@ -11,16 +11,28 @@ from pathlib import Path
 
 MAX_RETRIES = 3
 RETRY_DELAY = 10
+RETRYABLE_CODES = {429, 500, 502, 503, 504}
 
 
-class RateLimited(Exception):
+class MoltbookError(Exception):
+    """API error with status code and response body."""
+
+    def __init__(self, code, url, body=None):
+        self.code = code
+        self.url = url
+        self.body = body or {}
+        msg = self.body.get("error") or self.body.get("message") or f"HTTP {code}"
+        super().__init__(f"{msg} (HTTP {code}: {url})")
+
+
+class RateLimited(MoltbookError):
     """Raised when a long cooldown (e.g. post rate limit) makes retry impractical."""
 
-    def __init__(self, retry_after_seconds, body=None):
+    def __init__(self, retry_after_seconds, url, body=None):
         self.retry_after_seconds = retry_after_seconds
-        self.body = body or {}
+        super().__init__(429, url, body)
         minutes = retry_after_seconds // 60
-        super().__init__(f"Rate limited. Try again in {minutes} minute(s).")
+        self.args = (f"Rate limited. Try again in {minutes} minute(s).",)
 
 
 def _parse_error_body(http_error):
@@ -98,26 +110,54 @@ class Moltbook:
         req = urllib.request.Request(
             url, data=data, headers=self._headers(), method=method
         )
+        last_error = None
         for attempt in range(MAX_RETRIES):
             try:
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     return json.loads(resp.read())
             except urllib.error.HTTPError as e:
-                if e.code != 429:
-                    raise
                 error_body = _parse_error_body(e)
-                retry_minutes = error_body.get("retry_after_minutes")
-                if retry_minutes is not None:
-                    raise RateLimited(int(retry_minutes) * 60, error_body) from e
+
+                if e.code == 429:
+                    retry_minutes = error_body.get("retry_after_minutes")
+                    if retry_minutes is not None:
+                        raise RateLimited(
+                            int(retry_minutes) * 60, url, error_body
+                        ) from e
+
+                if e.code not in RETRYABLE_CODES:
+                    raise MoltbookError(e.code, url, error_body) from e
+
+                last_error = e
                 if attempt < MAX_RETRIES - 1:
                     retry_after = int(e.headers.get("Retry-After", RETRY_DELAY))
+                    import sys as _sys
+
                     print(
-                        f"Rate limited. Retrying in {retry_after}s...",
-                        file=__import__("sys").stderr,
+                        f"HTTP {e.code}. Retrying in {retry_after}s "
+                        f"(attempt {attempt + 1}/{MAX_RETRIES})...",
+                        file=_sys.stderr,
                     )
                     time.sleep(retry_after)
                     continue
-                raise
+            except urllib.error.URLError as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    import sys as _sys
+
+                    print(
+                        f"Connection error: {e.reason}. Retrying in "
+                        f"{RETRY_DELAY}s (attempt {attempt + 1}/{MAX_RETRIES})...",
+                        file=_sys.stderr,
+                    )
+                    time.sleep(RETRY_DELAY)
+                    continue
+
+        raise MoltbookError(
+            getattr(last_error, "code", 0),
+            url,
+            {"error": f"Failed after {MAX_RETRIES} attempts: {last_error}"},
+        )
 
     # Feed & posts
 
@@ -172,10 +212,33 @@ class Moltbook:
     def unfollow(self, agent_name):
         return self._request("DELETE", f"/agents/{agent_name}/follow")
 
-    # Discovery
+    # Submolts
 
     def submolts(self):
         return self._request("GET", "/submolts")
+
+    def submolt(self, name):
+        """Get details for a single submolt."""
+        return self._request("GET", f"/submolts/{name}")
+
+    def create_submolt(self, name, display_name, description):
+        return self._request(
+            "POST",
+            "/submolts",
+            body={
+                "name": name,
+                "display_name": display_name,
+                "description": description,
+            },
+        )
+
+    def subscribe(self, submolt_name):
+        return self._request("POST", f"/submolts/{submolt_name}/subscribe")
+
+    def unsubscribe(self, submolt_name):
+        return self._request("DELETE", f"/submolts/{submolt_name}/subscribe")
+
+    # Search
 
     def search(self, query):
         return self._request("GET", "/search", params={"q": query})

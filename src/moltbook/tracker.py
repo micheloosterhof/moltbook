@@ -85,9 +85,7 @@ class ConversationTracker:
                 new.append(c)
             replies = c.get("replies", [])
             if replies:
-                new.extend(
-                    self._find_new_comments(replies, seen_ids, my_comment_ids)
-                )
+                new.extend(self._find_new_comments(replies, seen_ids, my_comment_ids))
         return new
 
     def check_replies(self):
@@ -116,11 +114,15 @@ class ConversationTracker:
             new_comments = self._find_new_comments(comments, seen_ids, my_ids)
 
             if new_comments:
-                results.append({
-                    "post_id": post_id,
-                    "post_title": post_data.get("title", "") if isinstance(post_data, dict) else "",
-                    "new_comments": new_comments,
-                })
+                results.append(
+                    {
+                        "post_id": post_id,
+                        "post_title": post_data.get("title", "")
+                        if isinstance(post_data, dict)
+                        else "",
+                        "new_comments": new_comments,
+                    }
+                )
 
             # Update seen state with all current comment IDs
             all_ids = self._collect_comment_ids(comments)

@@ -2,20 +2,26 @@
 # ABOUTME: Verifies session briefing, compact post reading, and comment-and-watch.
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from moltbook.session import Session
 
 
 class TestSessionStart(unittest.TestCase):
-
     def _make_session(self, tracker=None):
         client = MagicMock()
         client.feed.return_value = {
             "posts": [
-                {"id": "1", "title": "Hot Post", "author": {"name": "Eos"},
-                 "submolt": {"name": "general"}, "upvotes": 5, "comment_count": 2,
-                 "created_at": "2026-01-31T00:00:00Z", "content": "body"},
+                {
+                    "id": "1",
+                    "title": "Hot Post",
+                    "author": {"name": "Eos"},
+                    "submolt": {"name": "general"},
+                    "upvotes": 5,
+                    "comment_count": 2,
+                    "created_at": "2026-01-31T00:00:00Z",
+                    "content": "body",
+                },
             ]
         }
         return Session(client, tracker), client
@@ -51,20 +57,36 @@ class TestSessionStart(unittest.TestCase):
 
 
 class TestSessionReadPost(unittest.TestCase):
-
     def test_read_post_returns_flat_comments(self):
         client = MagicMock()
         client.post.return_value = {
-            "post": {"id": "p1", "title": "Test", "content": "Body",
-                     "author": {"name": "Eos"}, "upvotes": 3},
+            "post": {
+                "id": "p1",
+                "title": "Test",
+                "content": "Body",
+                "author": {"name": "Eos"},
+                "upvotes": 3,
+            },
             "comments": [
-                {"id": "c1", "author": {"name": "Bot"}, "content": "Hi",
-                 "upvotes": 1, "parent_id": None, "created_at": "",
-                 "replies": [
-                     {"id": "c2", "author": "Sub", "content": "Reply",
-                      "upvotes": 0, "parent_id": "c1", "created_at": "",
-                      "replies": []}
-                 ]},
+                {
+                    "id": "c1",
+                    "author": {"name": "Bot"},
+                    "content": "Hi",
+                    "upvotes": 1,
+                    "parent_id": None,
+                    "created_at": "",
+                    "replies": [
+                        {
+                            "id": "c2",
+                            "author": "Sub",
+                            "content": "Reply",
+                            "upvotes": 0,
+                            "parent_id": "c1",
+                            "created_at": "",
+                            "replies": [],
+                        }
+                    ],
+                },
             ],
         }
         session = Session(client)
@@ -78,18 +100,31 @@ class TestSessionReadPost(unittest.TestCase):
 
 
 class TestSessionMyRecentPosts(unittest.TestCase):
-
     def test_returns_summarized_posts(self):
         client = MagicMock()
         client.me.return_value = {"agent": {"name": "Eos"}}
         client.profile.return_value = {
             "posts": [
-                {"id": "p1", "title": "First", "author": {"name": "Eos"},
-                 "submolt": {"name": "general"}, "upvotes": 5, "comment_count": 2,
-                 "created_at": "2026-01-31", "content": "long body here"},
-                {"id": "p2", "title": "Second", "author": {"name": "Eos"},
-                 "submolt": {"name": "dev"}, "upvotes": 1, "comment_count": 0,
-                 "created_at": "2026-01-30", "content": "another body"},
+                {
+                    "id": "p1",
+                    "title": "First",
+                    "author": {"name": "Eos"},
+                    "submolt": {"name": "general"},
+                    "upvotes": 5,
+                    "comment_count": 2,
+                    "created_at": "2026-01-31",
+                    "content": "long body here",
+                },
+                {
+                    "id": "p2",
+                    "title": "Second",
+                    "author": {"name": "Eos"},
+                    "submolt": {"name": "dev"},
+                    "upvotes": 1,
+                    "comment_count": 0,
+                    "created_at": "2026-01-30",
+                    "content": "another body",
+                },
             ]
         }
         session = Session(client)
@@ -118,12 +153,9 @@ class TestSessionMyRecentPosts(unittest.TestCase):
 
 
 class TestSessionCommentAndWatch(unittest.TestCase):
-
     def test_comments_and_watches(self):
         client = MagicMock()
-        client.comment.return_value = {
-            "comment": {"id": "new-c", "content": "Hello"}
-        }
+        client.comment.return_value = {"comment": {"id": "new-c", "content": "Hello"}}
         tracker = MagicMock()
         session = Session(client, tracker)
 

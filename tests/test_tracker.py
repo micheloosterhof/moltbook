@@ -1,10 +1,9 @@
 # ABOUTME: Tests for the Moltbook conversation tracker.
 # ABOUTME: Verifies state persistence, watch/unwatch, and reply detection.
 
-import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from moltbook.tracker import ConversationTracker
 
@@ -21,7 +20,6 @@ def _make_tracker(state=None):
 
 
 class TestWatch(unittest.TestCase):
-
     def test_watch_adds_post(self):
         tracker, _ = _make_tracker()
         tracker.watch("post-1", my_comment_id="comment-1")
@@ -33,9 +31,7 @@ class TestWatch(unittest.TestCase):
         tracker, _ = _make_tracker()
         tracker.watch("post-1", my_comment_id="c1")
         tracker.watch("post-1", my_comment_id="c2")
-        self.assertEqual(
-            tracker.watched["post-1"]["my_comment_ids"], ["c1", "c2"]
-        )
+        self.assertEqual(tracker.watched["post-1"]["my_comment_ids"], ["c1", "c2"])
 
     def test_watch_without_comment_id(self):
         tracker, _ = _make_tracker()
@@ -55,16 +51,17 @@ class TestWatch(unittest.TestCase):
 
 
 class TestCheckReplies(unittest.TestCase):
-
     def test_finds_new_comments(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": ["my-c1"],
-                    "seen_comment_ids": ["old-c1", "my-c1"],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": ["my-c1"],
+                        "seen_comment_ids": ["old-c1", "my-c1"],
+                    }
                 }
             }
-        })
+        )
         client.post.return_value = {
             "post": {"id": "post-1", "title": "Test"},
             "comments": [
@@ -81,14 +78,16 @@ class TestCheckReplies(unittest.TestCase):
         self.assertEqual(results[0]["new_comments"][0]["id"], "new-c1")
 
     def test_excludes_own_comments_from_new(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": ["my-c1", "my-c2"],
-                    "seen_comment_ids": [],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": ["my-c1", "my-c2"],
+                        "seen_comment_ids": [],
+                    }
                 }
             }
-        })
+        )
         client.post.return_value = {
             "post": {"id": "post-1", "title": "Test"},
             "comments": [
@@ -101,14 +100,16 @@ class TestCheckReplies(unittest.TestCase):
         self.assertEqual(len(results), 0)
 
     def test_no_new_comments_returns_empty(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": ["my-c1"],
-                    "seen_comment_ids": ["old-c1", "my-c1"],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": ["my-c1"],
+                        "seen_comment_ids": ["old-c1", "my-c1"],
+                    }
                 }
             }
-        })
+        )
         client.post.return_value = {
             "post": {"id": "post-1", "title": "Test"},
             "comments": [
@@ -121,14 +122,16 @@ class TestCheckReplies(unittest.TestCase):
         self.assertEqual(len(results), 0)
 
     def test_finds_nested_replies(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": ["my-c1"],
-                    "seen_comment_ids": ["my-c1"],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": ["my-c1"],
+                        "seen_comment_ids": ["my-c1"],
+                    }
                 }
             }
-        })
+        )
         client.post.return_value = {
             "post": {"id": "post-1", "title": "Test"},
             "comments": [
@@ -137,7 +140,12 @@ class TestCheckReplies(unittest.TestCase):
                     "author": "Eos",
                     "content": "mine",
                     "replies": [
-                        {"id": "reply-1", "author": "Y", "content": "response", "replies": []},
+                        {
+                            "id": "reply-1",
+                            "author": "Y",
+                            "content": "response",
+                            "replies": [],
+                        },
                     ],
                 },
             ],
@@ -148,14 +156,16 @@ class TestCheckReplies(unittest.TestCase):
         self.assertEqual(results[0]["new_comments"][0]["id"], "reply-1")
 
     def test_updates_seen_ids_after_check(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": ["my-c1"],
-                    "seen_comment_ids": [],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": ["my-c1"],
+                        "seen_comment_ids": [],
+                    }
                 }
             }
-        })
+        )
         client.post.return_value = {
             "post": {"id": "post-1", "title": "Test"},
             "comments": [
@@ -170,14 +180,16 @@ class TestCheckReplies(unittest.TestCase):
         self.assertIn("my-c1", seen)
 
     def test_handles_api_error_gracefully(self):
-        tracker, client = _make_tracker({
-            "watched": {
-                "post-1": {
-                    "my_comment_ids": [],
-                    "seen_comment_ids": [],
+        tracker, client = _make_tracker(
+            {
+                "watched": {
+                    "post-1": {
+                        "my_comment_ids": [],
+                        "seen_comment_ids": [],
+                    }
                 }
             }
-        })
+        )
         client.post.side_effect = Exception("Network error")
 
         results = tracker.check_replies()

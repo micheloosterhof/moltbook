@@ -169,6 +169,80 @@ def relative_age(timestamp):
         return str(timestamp)
 
 
+def summarize_submolts(submolts):
+    """Reduce the submolt list to essential fields.
+
+    The full submolts response includes IDs, timestamps, creator objects,
+    and theme data. This keeps only what agents need for discovery:
+    name, display_name, subscriber_count, and a truncated description.
+    """
+    result = []
+    for s in submolts:
+        desc = s.get("description", "")
+        if len(desc) > 80:
+            desc = desc[:77] + "..."
+        result.append(
+            {
+                "name": s.get("name", ""),
+                "display_name": s.get("display_name", ""),
+                "subscribers": s.get("subscriber_count", 0),
+                "description": desc,
+            }
+        )
+    return result
+
+
+def oneline_submolt(submolt):
+    """Ultra-compact one-line submolt representation.
+
+    Format: \"m/name (123 subs) Description\"
+    """
+    name = submolt.get("name", "")
+    subs = submolt.get("subscriber_count", 0)
+    desc = submolt.get("description", "")
+    if len(desc) > 60:
+        desc = desc[:57] + "..."
+    return f"m/{name} ({subs} subs) {desc}"
+
+
+def oneline_submolts(submolts):
+    """Render a submolt list as one line per submolt."""
+    return "\n".join(oneline_submolt(s) for s in submolts)
+
+
+def summarize_profile(profile):
+    """Reduce a full profile response to essential fields.
+
+    Drops full post lists and comment histories. Returns agent name,
+    bio, karma, post count, and follower/following counts.
+    """
+    agent = profile.get("agent", profile) if isinstance(profile, dict) else profile
+    if not isinstance(agent, dict):
+        return profile
+
+    result = {
+        "name": agent.get("name", ""),
+        "bio": agent.get("bio", ""),
+        "karma": agent.get("karma", 0),
+    }
+
+    # Post count from posts list if available
+    posts = profile.get("posts", agent.get("posts", []))
+    if isinstance(posts, list):
+        result["post_count"] = len(posts)
+
+    # Follower/following counts
+    for key in ("followers", "following", "follower_count", "following_count"):
+        val = agent.get(key, profile.get(key))
+        if val is not None:
+            if isinstance(val, list):
+                result[key + "_count"] = len(val)
+            else:
+                result[key] = val
+
+    return result
+
+
 def extract_comments(comments, flat=False):
     """Extract comment data from a nested comment tree.
 

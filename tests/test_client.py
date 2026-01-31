@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from io import BytesIO
 
-from moltbook.client import Moltbook, RateLimited, _resolve_api_key
+from moltbook.client import Moltbook, MoltbookError, RateLimited, _resolve_api_key
 
 
 def _make_client():
@@ -44,7 +44,6 @@ class TestCredentialResolution(unittest.TestCase):
         self.assertEqual(key, "config_key_456")
 
     def test_cwd_credentials(self):
-        config_path = Path.home() / ".config" / "moltbook" / "credentials.json"
         cwd_path = Path.cwd() / "credentials.json"
         creds = json.dumps({"api_key": "cwd_key_789"})
 
@@ -266,6 +265,38 @@ class TestMoltbookURLs(unittest.TestCase):
             },
         )
 
+    @patch("moltbook.client.Moltbook._request")
+    def test_submolt_detail(self, mock_req):
+        mock_req.return_value = {"submolt": {}}
+        self.client.submolt("general")
+        mock_req.assert_called_once_with("GET", "/submolts/general")
+
+    @patch("moltbook.client.Moltbook._request")
+    def test_create_submolt(self, mock_req):
+        mock_req.return_value = {"submolt": {}}
+        self.client.create_submolt("test", "Test", "A test submolt")
+        mock_req.assert_called_once_with(
+            "POST",
+            "/submolts",
+            body={
+                "name": "test",
+                "display_name": "Test",
+                "description": "A test submolt",
+            },
+        )
+
+    @patch("moltbook.client.Moltbook._request")
+    def test_subscribe(self, mock_req):
+        mock_req.return_value = {"success": True}
+        self.client.subscribe("general")
+        mock_req.assert_called_once_with("POST", "/submolts/general/subscribe")
+
+    @patch("moltbook.client.Moltbook._request")
+    def test_unsubscribe(self, mock_req):
+        mock_req.return_value = {"success": True}
+        self.client.unsubscribe("general")
+        mock_req.assert_called_once_with("DELETE", "/submolts/general/subscribe")
+
 
 class TestMoltbookRetry(unittest.TestCase):
     """Test rate limit retry behavior."""
@@ -309,9 +340,8 @@ class TestMoltbookRetry(unittest.TestCase):
             self._make_429_error(retry_after=1),
             self._make_429_error(retry_after=1),
         ]
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
+        with self.assertRaises(MoltbookError):
             self.client._request("GET", "/feed")
-        self.assertEqual(ctx.exception.code, 429)
         self.assertEqual(mock_sleep.call_count, 2)
 
     @patch("moltbook.client.time.sleep")
@@ -328,19 +358,92 @@ class TestMoltbookRetry(unittest.TestCase):
         self.client._request("GET", "/feed")
         mock_sleep.assert_called_once_with(10)
 
+    @patch("moltbook.client.time.sleep")
     @patch("urllib.request.urlopen")
-    def test_does_not_retry_on_other_errors(self, mock_urlopen):
+    def test_retries_on_500(self, mock_urlopen, mock_sleep):
+        success_resp = MagicMock()
+        success_resp.read.return_value = json.dumps({"ok": True}).encode()
+        success_resp.__enter__ = lambda s: s
+        success_resp.__exit__ = MagicMock(return_value=False)
+
+        mock_urlopen.side_effect = [
+            urllib.error.HTTPError(
+                "https://example.com",
+                500,
+                "Server Error",
+                {},
+                BytesIO(b""),
+            ),
+            success_resp,
+        ]
+        result = self.client._request("GET", "/feed")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_sleep.call_count, 1)
+
+    @patch("moltbook.client.time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_retries_on_502(self, mock_urlopen, mock_sleep):
+        success_resp = MagicMock()
+        success_resp.read.return_value = json.dumps({"ok": True}).encode()
+        success_resp.__enter__ = lambda s: s
+        success_resp.__exit__ = MagicMock(return_value=False)
+
+        mock_urlopen.side_effect = [
+            urllib.error.HTTPError(
+                "https://example.com",
+                502,
+                "Bad Gateway",
+                {},
+                BytesIO(b""),
+            ),
+            success_resp,
+        ]
+        result = self.client._request("GET", "/feed")
+        self.assertEqual(result, {"ok": True})
+
+    @patch("urllib.request.urlopen")
+    def test_does_not_retry_on_404(self, mock_urlopen):
         mock_urlopen.side_effect = urllib.error.HTTPError(
             "https://example.com",
-            500,
-            "Server Error",
+            404,
+            "Not Found",
             {},
-            BytesIO(b""),
+            BytesIO(b'{"error": "Not found"}'),
         )
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            self.client._request("GET", "/feed")
-        self.assertEqual(ctx.exception.code, 500)
+        with self.assertRaises(MoltbookError) as ctx:
+            self.client._request("GET", "/agents/nobody")
+        self.assertEqual(ctx.exception.code, 404)
         self.assertEqual(mock_urlopen.call_count, 1)
+
+    @patch("urllib.request.urlopen")
+    def test_does_not_retry_on_401(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.com",
+            401,
+            "Unauthorized",
+            {},
+            BytesIO(b'{"error": "Invalid API key"}'),
+        )
+        with self.assertRaises(MoltbookError) as ctx:
+            self.client._request("GET", "/feed")
+        self.assertEqual(ctx.exception.code, 401)
+        self.assertEqual(mock_urlopen.call_count, 1)
+
+    @patch("moltbook.client.time.sleep")
+    @patch("urllib.request.urlopen")
+    def test_retries_on_connection_error(self, mock_urlopen, mock_sleep):
+        success_resp = MagicMock()
+        success_resp.read.return_value = json.dumps({"ok": True}).encode()
+        success_resp.__enter__ = lambda s: s
+        success_resp.__exit__ = MagicMock(return_value=False)
+
+        mock_urlopen.side_effect = [
+            urllib.error.URLError("Connection refused"),
+            success_resp,
+        ]
+        result = self.client._request("GET", "/feed")
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_sleep.call_count, 1)
 
     @patch("urllib.request.urlopen")
     def test_raises_rate_limited_on_post_cooldown(self, mock_urlopen):

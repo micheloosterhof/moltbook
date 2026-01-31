@@ -6,6 +6,8 @@ import unittest
 from moltbook.helpers import (
     summarize_post,
     summarize_posts,
+    summarize_submolts,
+    summarize_profile,
     filter_posts,
     extract_comments,
     diff_feed,
@@ -13,6 +15,8 @@ from moltbook.helpers import (
     oneline_feed,
     oneline_comment,
     oneline_comments,
+    oneline_submolt,
+    oneline_submolts,
     relative_age,
 )
 
@@ -32,13 +36,11 @@ SAMPLE_POST = {
 SAMPLE_POSTS = [
     {**SAMPLE_POST, "id": "1", "upvotes": 10, "author": {"name": "Eos"}},
     {**SAMPLE_POST, "id": "2", "upvotes": 2, "author": {"name": "Spotter"}},
-    {**SAMPLE_POST, "id": "3", "upvotes": 0, "author": "Bot",
-     "submolt": "dev"},
+    {**SAMPLE_POST, "id": "3", "upvotes": 0, "author": "Bot", "submolt": "dev"},
 ]
 
 
 class TestSummarizePost(unittest.TestCase):
-
     def test_extracts_key_fields(self):
         s = summarize_post(SAMPLE_POST)
         self.assertEqual(s["id"], "abc-123")
@@ -66,7 +68,6 @@ class TestSummarizePost(unittest.TestCase):
 
 
 class TestSummarizePosts(unittest.TestCase):
-
     def test_summarizes_list(self):
         result = summarize_posts(SAMPLE_POSTS)
         self.assertEqual(len(result), 3)
@@ -76,7 +77,6 @@ class TestSummarizePosts(unittest.TestCase):
 
 
 class TestFilterPosts(unittest.TestCase):
-
     def test_filter_by_min_upvotes(self):
         result = filter_posts(SAMPLE_POSTS, min_upvotes=3)
         self.assertEqual(len(result), 1)
@@ -107,7 +107,6 @@ class TestFilterPosts(unittest.TestCase):
 
 
 class TestExtractComments(unittest.TestCase):
-
     COMMENTS = [
         {
             "id": "c1",
@@ -159,7 +158,6 @@ class TestExtractComments(unittest.TestCase):
 
 
 class TestDiffFeed(unittest.TestCase):
-
     def test_finds_new_posts(self):
         old = [{"id": "1"}, {"id": "2"}]
         new = [{"id": "2"}, {"id": "3"}, {"id": "4"}]
@@ -184,29 +182,43 @@ class TestDiffFeed(unittest.TestCase):
 
 
 class TestOnelinePost(unittest.TestCase):
-
     def test_format(self):
-        post = {"id": "abc", "title": "Hello World", "author": {"name": "Eos"},
-                "submolt": {"name": "general"}, "upvotes": 5, "comment_count": 3}
+        post = {
+            "id": "abc",
+            "title": "Hello World",
+            "author": {"name": "Eos"},
+            "submolt": {"name": "general"},
+            "upvotes": 5,
+            "comment_count": 3,
+        }
         line = oneline_post(post)
         # Age field is '?' when no created_at
         self.assertEqual(line, "[+5|3c|?] Hello World (by Eos in general) #abc")
 
     def test_negative_upvotes(self):
-        post = {"id": "x", "title": "Bad", "author": "Bot",
-                "upvotes": -2, "comment_count": 0}
+        post = {
+            "id": "x",
+            "title": "Bad",
+            "author": "Bot",
+            "upvotes": -2,
+            "comment_count": 0,
+        }
         line = oneline_post(post)
         self.assertIn("-2", line)
 
     def test_no_submolt(self):
-        post = {"id": "x", "title": "T", "author": "A", "upvotes": 0,
-                "comment_count": 0}
+        post = {
+            "id": "x",
+            "title": "T",
+            "author": "A",
+            "upvotes": 0,
+            "comment_count": 0,
+        }
         line = oneline_post(post)
         self.assertNotIn(" in ", line)
 
 
 class TestOnelineFeed(unittest.TestCase):
-
     def test_multiline(self):
         posts = [
             {"id": "1", "title": "A", "author": "X", "upvotes": 1, "comment_count": 0},
@@ -223,10 +235,13 @@ class TestOnelineFeed(unittest.TestCase):
 
 
 class TestOnelineComment(unittest.TestCase):
-
     def test_format(self):
-        comment = {"id": "c1", "author": {"name": "Eos"}, "content": "Nice post",
-                   "upvotes": 2}
+        comment = {
+            "id": "c1",
+            "author": {"name": "Eos"},
+            "content": "Nice post",
+            "upvotes": 2,
+        }
         line = oneline_comment(comment)
         self.assertEqual(line, "[+2] Eos: Nice post #c1")
 
@@ -240,7 +255,6 @@ class TestOnelineComment(unittest.TestCase):
 
 
 class TestOnelineComments(unittest.TestCase):
-
     def test_multiple_comments(self):
         comments = [
             {"id": "c1", "author": "A", "content": "Hello", "upvotes": 1},
@@ -253,28 +267,99 @@ class TestOnelineComments(unittest.TestCase):
         self.assertIn("#c2", lines[1])
 
 
-class TestRelativeAge(unittest.TestCase):
+class TestSummarizeSubmolts(unittest.TestCase):
+    def test_keeps_essential_fields(self):
+        submolts = [
+            {
+                "name": "general",
+                "display_name": "General",
+                "subscriber_count": 7687,
+                "description": "The town square.",
+                "id": "abc",
+                "created_at": "2026-01-27",
+                "created_by": {"name": "X"},
+            },
+        ]
+        result = summarize_submolts(submolts)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "general")
+        self.assertEqual(result[0]["subscribers"], 7687)
+        self.assertNotIn("id", result[0])
+        self.assertNotIn("created_by", result[0])
 
+    def test_truncates_long_description(self):
+        submolts = [{"name": "x", "description": "A" * 200, "subscriber_count": 0}]
+        result = summarize_submolts(submolts)
+        self.assertLessEqual(len(result[0]["description"]), 80)
+        self.assertTrue(result[0]["description"].endswith("..."))
+
+
+class TestOnelineSubmolt(unittest.TestCase):
+    def test_format(self):
+        s = {"name": "general", "subscriber_count": 100, "description": "Town square"}
+        line = oneline_submolt(s)
+        self.assertEqual(line, "m/general (100 subs) Town square")
+
+    def test_truncates_long_desc(self):
+        s = {"name": "x", "subscriber_count": 0, "description": "Y" * 100}
+        line = oneline_submolt(s)
+        self.assertIn("...", line)
+
+
+class TestOnelineSubmolts(unittest.TestCase):
+    def test_multiline(self):
+        subs = [
+            {"name": "a", "subscriber_count": 1, "description": "A"},
+            {"name": "b", "subscriber_count": 2, "description": "B"},
+        ]
+        result = oneline_submolts(subs)
+        lines = result.strip().split("\n")
+        self.assertEqual(len(lines), 2)
+
+
+class TestSummarizeProfile(unittest.TestCase):
+    def test_drops_post_list(self):
+        profile = {
+            "agent": {"name": "Eos", "bio": "I watch honeypots", "karma": 42},
+            "posts": [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+        }
+        result = summarize_profile(profile)
+        self.assertEqual(result["name"], "Eos")
+        self.assertEqual(result["karma"], 42)
+        self.assertEqual(result["post_count"], 3)
+        self.assertNotIn("posts", result)
+
+    def test_handles_flat_agent(self):
+        profile = {"name": "Bot", "bio": "", "karma": 0}
+        result = summarize_profile(profile)
+        self.assertEqual(result["name"], "Bot")
+
+
+class TestRelativeAge(unittest.TestCase):
     def test_recent(self):
         from datetime import datetime, timezone, timedelta
+
         now = datetime.now(timezone.utc)
         ts = (now - timedelta(hours=2)).isoformat()
         self.assertEqual(relative_age(ts), "2h")
 
     def test_days(self):
         from datetime import datetime, timezone, timedelta
+
         now = datetime.now(timezone.utc)
         ts = (now - timedelta(days=3)).isoformat()
         self.assertEqual(relative_age(ts), "3d")
 
     def test_weeks(self):
         from datetime import datetime, timezone, timedelta
+
         now = datetime.now(timezone.utc)
         ts = (now - timedelta(weeks=2)).isoformat()
         self.assertEqual(relative_age(ts), "2w")
 
     def test_z_suffix(self):
         from datetime import datetime, timezone, timedelta
+
         now = datetime.now(timezone.utc)
         ts = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.assertEqual(relative_age(ts), "30m")

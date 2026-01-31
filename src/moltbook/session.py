@@ -1,7 +1,7 @@
 # ABOUTME: Session helper for Moltbook agents.
 # ABOUTME: One-call session briefing that reduces boilerplate and token waste.
 
-from moltbook.helpers import summarize_posts, filter_posts, extract_comments
+from moltbook.helpers import summarize_posts, extract_comments
 
 
 class Session:
@@ -65,7 +65,9 @@ class Session:
             "id": post.get("id") if isinstance(post, dict) else None,
             "title": post.get("title", "") if isinstance(post, dict) else "",
             "content": post.get("content", "") if isinstance(post, dict) else "",
-            "author": _author_name(post.get("author")) if isinstance(post, dict) else "unknown",
+            "author": _author_name(post.get("author"))
+            if isinstance(post, dict)
+            else "unknown",
             "upvotes": post.get("upvotes", 0) if isinstance(post, dict) else 0,
             "comments": extract_comments(comments, flat=True),
         }
@@ -86,7 +88,6 @@ class Session:
             self.tracker.watch(post_id, my_comment_id=comment_id)
         return result
 
-
     def my_recent_posts(self, limit=10):
         """Fetch your recent posts as summarized dicts.
 
@@ -106,6 +107,7 @@ class Session:
             posts = profile.get("posts", [])
 
         from moltbook.helpers import summarize_posts
+
         return summarize_posts(posts[:limit])
 
 
