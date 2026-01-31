@@ -7,6 +7,23 @@ from pathlib import Path
 from moltbook.helpers import _author_name, oneline_post, summarize_post
 
 
+def _resolve_partners_path():
+    """Find the partners state file, checking multiple locations.
+
+    Search order:
+    1. ./eos/partners-state.json (project directory)
+    2. ~/.config/moltbook/partners.json (user config)
+
+    Returns the first path that exists, or the project path as default
+    (since that's where Eos runs from).
+    """
+    project_path = Path.cwd() / "eos" / "partners-state.json"
+    config_path = Path.home() / ".config" / "moltbook" / "partners.json"
+    if config_path.exists():
+        return config_path
+    return project_path
+
+
 class PartnerMonitor:
     """Monitors conversation partners for new activity.
 
@@ -31,7 +48,7 @@ class PartnerMonitor:
     def __init__(self, client, state_path=None):
         self.client = client
         if state_path is None:
-            state_path = Path.home() / ".config" / "moltbook" / "partners.json"
+            state_path = _resolve_partners_path()
         self.state_path = Path(state_path)
         self._state = self._load()
 
@@ -81,20 +98,7 @@ class PartnerMonitor:
         except Exception:
             return []
 
-    def _profile_posts(self, name):
-        """Try to get a partner's posts via the profile API."""
-        try:
-            data = self.client.profile(name)
-            if isinstance(data, dict):
-                posts = data.get("posts", [])
-                agent = data.get("agent", {})
-                if isinstance(agent, dict) and not posts:
-                    posts = agent.get("posts", [])
-                return posts
-        except Exception:
-            return []
-
-    def check(self, feed_posts=None):
+    def check(self, feed_posts=None, use_search=False):
         """Check all partners for new activity.
 
         Args:
@@ -102,6 +106,10 @@ class PartnerMonitor:
                 If provided, skips the feed fetch and uses these instead.
                 Pass this when you've already fetched the feed to avoid
                 duplicate API calls.
+            use_search: If True, also query the search API per partner.
+                Disabled by default because the search API is unreliable
+                (frequent 500s) and each failed search costs ~30s in retries.
+                The feed scan catches partners on hot/new feeds.
 
         Returns a list of dicts::
 
@@ -137,23 +145,18 @@ class PartnerMonitor:
             seen_ids = set(entry.get("seen_post_ids", []))
             found_posts = {}
 
-            # Strategy 1: check the feed we already have
+            # Primary: check the feed we already have
             for p in self._find_posts_by_author(name, feed_posts):
                 pid = p.get("id")
                 if pid:
                     found_posts[pid] = p
 
-            # Strategy 2: search API
-            for p in self._search_partner(name):
-                pid = p.get("id")
-                if pid:
-                    found_posts[pid] = p
-
-            # Strategy 3: profile API (may 404, that's fine)
-            for p in self._profile_posts(name):
-                pid = p.get("id") if isinstance(p, dict) else None
-                if pid:
-                    found_posts[pid] = p
+            # Optional: search API (slow and unreliable)
+            if use_search:
+                for p in self._search_partner(name):
+                    pid = p.get("id")
+                    if pid:
+                        found_posts[pid] = p
 
             # Find new posts
             new_posts = [p for pid, p in found_posts.items() if pid not in seen_ids]
@@ -176,31 +179,27 @@ class PartnerMonitor:
         self._save()
         return results
 
-    def check_one(self, name):
-        """Check a single partner for new activity.
-
-        Returns the same format as check() but for one partner.
-        """
-        if name not in self._state["partners"]:
-            self.add(name)
-        # Temporarily isolate to just this partner
-        original = self._state["partners"]
-        self._state["partners"] = {name: original[name]}
-        results = self.check()
-        self._state["partners"] = original
-        # Merge back the updated seen state
-        if name in self._state["partners"]:
-            pass  # already updated by check()
-        self._save()
-        return results
-
     def mark_all_seen(self, name=None):
         """Mark all currently known posts as seen.
 
         If name is provided, only marks that partner's posts.
+        Fetches hot + new feeds and marks any partner posts found.
         Useful for initial setup so you don't get flooded with
         "new" posts on first run.
         """
+        # Fetch feeds once for all partners
+        feed_posts = []
+        try:
+            hot = self.client.feed(sort="hot", limit=25)
+            feed_posts.extend(hot.get("posts", []))
+        except Exception:
+            pass
+        try:
+            new = self.client.feed(sort="new", limit=25)
+            feed_posts.extend(new.get("posts", []))
+        except Exception:
+            pass
+
         partners = (
             {name: self._state["partners"][name]}
             if name and name in self._state["partners"]
@@ -209,17 +208,10 @@ class PartnerMonitor:
 
         for pname, entry in partners.items():
             found_ids = set(entry.get("seen_post_ids", []))
-
-            # Gather all known posts
-            for p in self._search_partner(pname):
+            for p in self._find_posts_by_author(pname, feed_posts):
                 pid = p.get("id")
                 if pid:
                     found_ids.add(pid)
-            for p in self._profile_posts(pname):
-                pid = p.get("id") if isinstance(p, dict) else None
-                if pid:
-                    found_ids.add(pid)
-
             entry["seen_post_ids"] = list(found_ids)
 
         self._save()
