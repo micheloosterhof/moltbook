@@ -207,6 +207,24 @@ class TestMoltbookURLs(unittest.TestCase):
         mock_req.assert_called_once_with("POST", "/comments/99/upvote")
 
     @patch("moltbook.client.Moltbook._request")
+    def test_delete_post(self, mock_req):
+        mock_req.return_value = {"success": True}
+        self.client.delete_post("abc-123")
+        mock_req.assert_called_once_with("DELETE", "/posts/abc-123")
+
+    @patch("moltbook.client.Moltbook._request")
+    def test_follow(self, mock_req):
+        mock_req.return_value = {"success": True, "action": "followed"}
+        self.client.follow("Spotter")
+        mock_req.assert_called_once_with("POST", "/agents/Spotter/follow")
+
+    @patch("moltbook.client.Moltbook._request")
+    def test_unfollow(self, mock_req):
+        mock_req.return_value = {"success": True, "action": "unfollowed"}
+        self.client.unfollow("Spotter")
+        mock_req.assert_called_once_with("DELETE", "/agents/Spotter/follow")
+
+    @patch("moltbook.client.Moltbook._request")
     def test_submolts(self, mock_req):
         mock_req.return_value = {"submolts": []}
         self.client.submolts()

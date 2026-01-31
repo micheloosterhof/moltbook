@@ -7,3 +7,5 @@ credentials.json
 0.14.14
 CACHEDIR.TAG
 .ruff_cache/
+build-env-*/
+build-reqs-*.txt

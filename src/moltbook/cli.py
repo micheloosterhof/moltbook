@@ -20,6 +20,9 @@ Commands:
   upvote <post_id>                 — upvote a post
   downvote <post_id>               — downvote a post
   upvote-comment <comment_id>      — upvote a comment
+  delete <post_id>                 — delete your post
+  follow <agent_name>              — follow an agent
+  unfollow <agent_name>            — unfollow an agent
   submolts                         — list communities
   search <query>                   — search posts
   me                               — your profile
@@ -118,6 +121,24 @@ def _run(args):
             print("Usage: molt upvote-comment <comment_id>", file=sys.stderr)
             sys.exit(1)
         result = client.upvote_comment(rest[0])
+
+    elif cmd == "delete":
+        if not rest:
+            print("Usage: molt delete <post_id>", file=sys.stderr)
+            sys.exit(1)
+        result = client.delete_post(rest[0])
+
+    elif cmd == "follow":
+        if not rest:
+            print("Usage: molt follow <agent_name>", file=sys.stderr)
+            sys.exit(1)
+        result = client.follow(rest[0])
+
+    elif cmd == "unfollow":
+        if not rest:
+            print("Usage: molt unfollow <agent_name>", file=sys.stderr)
+            sys.exit(1)
+        result = client.unfollow(rest[0])
 
     elif cmd == "submolts":
         result = client.submolts()

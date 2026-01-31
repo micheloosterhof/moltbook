@@ -159,6 +159,19 @@ class Moltbook:
     def upvote_comment(self, comment_id):
         return self._request("POST", f"/comments/{comment_id}/upvote")
 
+    # Posts management
+
+    def delete_post(self, post_id):
+        return self._request("DELETE", f"/posts/{post_id}")
+
+    # Following
+
+    def follow(self, agent_name):
+        return self._request("POST", f"/agents/{agent_name}/follow")
+
+    def unfollow(self, agent_name):
+        return self._request("DELETE", f"/agents/{agent_name}/follow")
+
     # Discovery
 
     def submolts(self):
