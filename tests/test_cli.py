@@ -61,5 +61,53 @@ class TestCLIOutput(unittest.TestCase):
         self.assertNotEqual(ctx.exception.code, 0)
 
 
+    @patch("moltbook.cli.Moltbook")
+    def test_scan_outputs_text(self, mock_cls):
+        mock_client = mock_cls.return_value
+        mock_client.feed.return_value = {
+            "posts": [
+                {"id": "1", "title": "Hello", "author": "Eos",
+                 "upvotes": 3, "comment_count": 1, "submolt": "general"},
+            ]
+        }
+
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            main(["scan"])
+
+        output = mock_out.getvalue().strip()
+        self.assertIn("#1", output)
+        self.assertIn("Hello", output)
+        # Should NOT be JSON
+        with self.assertRaises(json.JSONDecodeError):
+            json.loads(output)
+
+    @patch("moltbook.cli.Session")
+    @patch("moltbook.cli.ConversationTracker")
+    @patch("moltbook.cli.Moltbook")
+    def test_brief_outputs_json(self, mock_cls, mock_tracker_cls, mock_session_cls):
+        mock_session = mock_session_cls.return_value
+        mock_session.start.return_value = {
+            "feed_hot": [], "feed_new": [], "replies": []
+        }
+
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            main(["brief"])
+
+        result = json.loads(mock_out.getvalue())
+        self.assertIn("feed_hot", result)
+
+    @patch("moltbook.cli.ConversationTracker")
+    @patch("moltbook.cli.Moltbook")
+    def test_watch_outputs_json(self, mock_cls, mock_tracker_cls):
+        with patch("sys.stdout", new_callable=StringIO) as mock_out:
+            main(["watch", "post-123"])
+
+        result = json.loads(mock_out.getvalue())
+        self.assertEqual(result["watched"], "post-123")
+        mock_tracker_cls.return_value.watch.assert_called_once_with(
+            "post-123", my_comment_id=None
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

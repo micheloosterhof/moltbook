@@ -8,6 +8,12 @@ from moltbook.helpers import (
     summarize_posts,
     filter_posts,
     extract_comments,
+    diff_feed,
+    oneline_post,
+    oneline_feed,
+    oneline_comment,
+    oneline_comments,
+    relative_age,
 )
 
 
@@ -150,6 +156,137 @@ class TestExtractComments(unittest.TestCase):
         result = extract_comments(self.COMMENTS, flat=True)
         authors = [c["author"] for c in result]
         self.assertEqual(authors, ["Eos", "Bot", "Spotter"])
+
+
+class TestDiffFeed(unittest.TestCase):
+
+    def test_finds_new_posts(self):
+        old = [{"id": "1"}, {"id": "2"}]
+        new = [{"id": "2"}, {"id": "3"}, {"id": "4"}]
+        result = diff_feed(old, new)
+        self.assertEqual(len(result), 2)
+        self.assertEqual([p["id"] for p in result], ["3", "4"])
+
+    def test_no_new_posts(self):
+        posts = [{"id": "1"}, {"id": "2"}]
+        result = diff_feed(posts, posts)
+        self.assertEqual(result, [])
+
+    def test_all_new(self):
+        old = [{"id": "1"}]
+        new = [{"id": "2"}, {"id": "3"}]
+        result = diff_feed(old, new)
+        self.assertEqual(len(result), 2)
+
+    def test_empty_old(self):
+        result = diff_feed([], [{"id": "1"}])
+        self.assertEqual(len(result), 1)
+
+
+class TestOnelinePost(unittest.TestCase):
+
+    def test_format(self):
+        post = {"id": "abc", "title": "Hello World", "author": {"name": "Eos"},
+                "submolt": {"name": "general"}, "upvotes": 5, "comment_count": 3}
+        line = oneline_post(post)
+        # Age field is '?' when no created_at
+        self.assertEqual(line, "[+5|3c|?] Hello World (by Eos in general) #abc")
+
+    def test_negative_upvotes(self):
+        post = {"id": "x", "title": "Bad", "author": "Bot",
+                "upvotes": -2, "comment_count": 0}
+        line = oneline_post(post)
+        self.assertIn("-2", line)
+
+    def test_no_submolt(self):
+        post = {"id": "x", "title": "T", "author": "A", "upvotes": 0,
+                "comment_count": 0}
+        line = oneline_post(post)
+        self.assertNotIn(" in ", line)
+
+
+class TestOnelineFeed(unittest.TestCase):
+
+    def test_multiline(self):
+        posts = [
+            {"id": "1", "title": "A", "author": "X", "upvotes": 1, "comment_count": 0},
+            {"id": "2", "title": "B", "author": "Y", "upvotes": 2, "comment_count": 1},
+        ]
+        result = oneline_feed(posts)
+        lines = result.strip().split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("#1", lines[0])
+        self.assertIn("#2", lines[1])
+
+    def test_empty_feed(self):
+        self.assertEqual(oneline_feed([]), "")
+
+
+class TestOnelineComment(unittest.TestCase):
+
+    def test_format(self):
+        comment = {"id": "c1", "author": {"name": "Eos"}, "content": "Nice post",
+                   "upvotes": 2}
+        line = oneline_comment(comment)
+        self.assertEqual(line, "[+2] Eos: Nice post #c1")
+
+    def test_truncates_long_content(self):
+        comment = {"id": "c1", "author": "Bot", "content": "x" * 200, "upvotes": 0}
+        line = oneline_comment(comment)
+        self.assertIn("...", line)
+        # Content portion should be max 120 chars
+        content_part = line.split(": ", 1)[1].rsplit(" #", 1)[0]
+        self.assertLessEqual(len(content_part), 120)
+
+
+class TestOnelineComments(unittest.TestCase):
+
+    def test_multiple_comments(self):
+        comments = [
+            {"id": "c1", "author": "A", "content": "Hello", "upvotes": 1},
+            {"id": "c2", "author": "B", "content": "World", "upvotes": 0},
+        ]
+        result = oneline_comments(comments)
+        lines = result.strip().split("\n")
+        self.assertEqual(len(lines), 2)
+        self.assertIn("#c1", lines[0])
+        self.assertIn("#c2", lines[1])
+
+
+class TestRelativeAge(unittest.TestCase):
+
+    def test_recent(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(hours=2)).isoformat()
+        self.assertEqual(relative_age(ts), "2h")
+
+    def test_days(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(days=3)).isoformat()
+        self.assertEqual(relative_age(ts), "3d")
+
+    def test_weeks(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(weeks=2)).isoformat()
+        self.assertEqual(relative_age(ts), "2w")
+
+    def test_z_suffix(self):
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        ts = (now - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.assertEqual(relative_age(ts), "30m")
+
+    def test_empty_string(self):
+        self.assertEqual(relative_age(""), "?")
+
+    def test_none(self):
+        self.assertEqual(relative_age(None), "?")
+
+    def test_invalid_returns_original(self):
+        self.assertEqual(relative_age("not-a-date"), "not-a-date")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 # ABOUTME: Helper functions for working with Moltbook API responses.
 # ABOUTME: Reduces token cost by summarizing and filtering post data.
 
+from datetime import datetime, timezone
+
 
 def _author_name(author):
     """Extract author name from a string or dict."""
@@ -59,6 +61,112 @@ def filter_posts(posts, min_upvotes=None, authors=None, submolts=None):
         submolt_set = set(submolts)
         result = [p for p in result if _submolt_name(p.get("submolt")) in submolt_set]
     return result
+
+
+def oneline_post(post):
+    """Ultra-compact single-line representation of a post.
+
+    Format: "[+5|3c] Title (by Author in submolt) #id"
+    Optimized for minimum token count during feed triage.
+    """
+    upvotes = post.get("upvotes", 0)
+    comments = post.get("comment_count", 0)
+    title = post.get("title", "")
+    author = _author_name(post.get("author"))
+    submolt = _submolt_name(post.get("submolt"))
+    post_id = post.get("id", "?")
+    age = relative_age(post.get("created_at", ""))
+    sub = f" in {submolt}" if submolt else ""
+    return f"[{upvotes:+d}|{comments}c|{age}] {title} (by {author}{sub}) #{post_id}"
+
+
+def oneline_feed(posts):
+    """Render a full feed as one line per post.
+
+    Returns a single string. This is the most token-efficient way to
+    scan a feed — an agent can read 25 posts in ~25 lines instead of
+    a massive JSON blob.
+    """
+    return "\n".join(oneline_post(p) for p in posts)
+
+
+def oneline_comment(comment):
+    """Ultra-compact single-line representation of a comment.
+
+    Format: "[+2] Author: content (truncated) #id"
+    """
+    upvotes = comment.get("upvotes", 0)
+    author = _author_name(comment.get("author"))
+    content = comment.get("content", "")
+    if len(content) > 120:
+        content = content[:117] + "..."
+    comment_id = comment.get("id", "?")
+    return f"[{upvotes:+d}] {author}: {content} #{comment_id}"
+
+
+def diff_feed(old_posts, new_posts):
+    """Return posts in new_posts that weren't in old_posts.
+
+    Compares by post ID. Useful for agents that poll periodically and
+    only want to process new content.
+
+    Args:
+        old_posts: List of post dicts from previous check.
+        new_posts: List of post dicts from current check.
+
+    Returns list of posts that are new (not in old_posts by ID).
+    """
+    old_ids = {p.get("id") for p in old_posts}
+    return [p for p in new_posts if p.get("id") not in old_ids]
+
+
+def oneline_comments(comments):
+    """Render a flat comment list as one line per comment.
+
+    Like oneline_feed but for comments. Accepts the output of
+    extract_comments(flat=True) or any list of comment dicts.
+    """
+    return "\n".join(oneline_comment(c) for c in comments)
+
+
+def relative_age(timestamp):
+    """Convert an ISO 8601 timestamp to a compact relative age string.
+
+    Returns strings like '2h', '3d', '1w', '2mo'. Falls back to the
+    original string if parsing fails. Much cheaper than full timestamps.
+    """
+    if not timestamp:
+        return "?"
+    try:
+        # Handle both Z suffix and +00:00
+        ts = timestamp.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(ts)
+        now = datetime.now(timezone.utc)
+        delta = now - dt
+        seconds = int(delta.total_seconds())
+        if seconds < 0:
+            return "now"
+        if seconds < 60:
+            return f"{seconds}s"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes}m"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}h"
+        days = hours // 24
+        if days < 7:
+            return f"{days}d"
+        weeks = days // 7
+        if weeks < 5:
+            return f"{weeks}w"
+        months = days // 30
+        if months < 12:
+            return f"{months}mo"
+        years = days // 365
+        return f"{years}y"
+    except (ValueError, TypeError):
+        return str(timestamp)
 
 
 def extract_comments(comments, flat=False):

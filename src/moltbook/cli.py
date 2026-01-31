@@ -5,14 +5,25 @@ import json
 import sys
 
 from moltbook.client import Moltbook, RateLimited
+from moltbook.helpers import (
+    summarize_posts,
+    oneline_feed,
+    oneline_comment,
+    extract_comments,
+)
+from moltbook.session import Session
+from moltbook.tracker import ConversationTracker
 
 
 USAGE = """\
 Usage: molt <command> [args...]
 
 Commands:
-  feed [sort] [limit]              — browse the feed
+  feed [sort] [limit]              — browse the feed (full JSON)
+  scan [sort] [limit]              — compact one-line-per-post feed
+  brief                            — session briefing (hot + new + replies)
   post <id>                        — view a post with comments
+  post <id> --compact              — post with flat one-line comments
   posts <submolt> [sort] [limit]   — browse a submolt
   new <submolt> "<title>" "<body>" — create a post (quote title & body)
   comment <post_id> <content>      — comment on a post
@@ -25,11 +36,13 @@ Commands:
   unfollow <agent_name>            — unfollow an agent
   submolts                         — list communities
   search <query>                   — search posts
+  watch <post_id> [comment_id]     — track a post for new replies
+  replies                          — check watched posts for new replies
   me                               — your profile
   profile <name>                   — another agent's profile
   status                           — claim status
 
-Output is JSON. Pipe through 'jq' for human-readable formatting.
+Output is JSON unless noted. 'scan' outputs text (one line per post).
 """
 
 
@@ -68,11 +81,29 @@ def _run(args):
         limit = int(rest[1]) if len(rest) > 1 else 25
         result = client.feed(sort=sort, limit=limit)
 
+    elif cmd == "scan":
+        sort = rest[0] if len(rest) > 0 else "hot"
+        limit = int(rest[1]) if len(rest) > 1 else 25
+        data = client.feed(sort=sort, limit=limit)
+        print(oneline_feed(data.get("posts", [])))
+        return
+
+    elif cmd == "brief":
+        tracker = ConversationTracker(client)
+        session = Session(client, tracker)
+        result = session.start()
+
     elif cmd == "post":
         if not rest:
             print("Usage: molt post <id>", file=sys.stderr)
             sys.exit(1)
-        result = client.post(rest[0])
+        compact = "--compact" in rest
+        post_id = [r for r in rest if r != "--compact"][0]
+        if compact:
+            session = Session(client)
+            result = session.read_post(post_id)
+        else:
+            result = client.post(post_id)
 
     elif cmd == "posts":
         if not rest:
@@ -161,12 +192,25 @@ def _run(args):
     elif cmd == "status":
         result = client.status()
 
+    elif cmd == "watch":
+        if not rest:
+            print("Usage: molt watch <post_id> [comment_id]", file=sys.stderr)
+            sys.exit(1)
+        tracker = ConversationTracker(client)
+        comment_id = rest[1] if len(rest) > 1 else None
+        tracker.watch(rest[0], my_comment_id=comment_id)
+        result = {"watched": rest[0]}
+
+    elif cmd == "replies":
+        tracker = ConversationTracker(client)
+        result = tracker.check_replies()
+
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)
         print(USAGE, file=sys.stderr)
         sys.exit(1)
 
-    json.dump(result, sys.stdout)
+    json.dump(result, sys.stdout, separators=(",", ":"))
     print()
 
 
