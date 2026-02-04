@@ -1,23 +1,11 @@
 # ABOUTME: Persistent high-water mark for Moltbook feeds.
 # ABOUTME: Tracks last-seen posts per source so sessions surface only new content.
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
+
+from moltbook.helpers import resolve_state_path, load_json, save_json
 
 _MAX_SEEN_PER_SOURCE = 500
-
-
-def _resolve_cursor():
-    """Find the cursor file, checking multiple locations."""
-    candidates = [
-        Path.cwd() / "eos" / "cursor.json",
-        Path.home() / ".config" / "moltbook" / "cursor.json",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return Path.home() / ".config" / "moltbook" / "cursor.json"
 
 
 class FeedCursor:
@@ -38,19 +26,12 @@ class FeedCursor:
 
     def __init__(self, cursor_path=None):
         if cursor_path is None:
-            cursor_path = _resolve_cursor()
-        self.cursor_path = Path(cursor_path)
-        self._data = self._load()
-
-    def _load(self):
-        try:
-            return json.loads(self.cursor_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"sources": {}}
+            cursor_path = resolve_state_path("cursor.json")
+        self.cursor_path = cursor_path
+        self._data = load_json(cursor_path, default=lambda: {"sources": {}})
 
     def _save(self):
-        self.cursor_path.parent.mkdir(parents=True, exist_ok=True)
-        self.cursor_path.write_text(json.dumps(self._data, indent=2))
+        save_json(self.cursor_path, self._data)
 
     def _source(self, name):
         """Get or create a source entry."""
@@ -68,16 +49,17 @@ class FeedCursor:
         """
         source = source or "default"
         src = self._source(source)
-        seen = set(src["seen_ids"])
+        existing = src["seen_ids"]
+        seen_set = set(existing)
         for p in posts:
             pid = p.get("id") if isinstance(p, dict) else p
-            if pid:
-                seen.add(pid)
-        # Cap to prevent unbounded growth
-        seen_list = list(seen)
-        if len(seen_list) > _MAX_SEEN_PER_SOURCE:
-            seen_list = seen_list[-_MAX_SEEN_PER_SOURCE:]
-        src["seen_ids"] = seen_list
+            if pid and pid not in seen_set:
+                existing.append(pid)
+                seen_set.add(pid)
+        # Cap: trim oldest entries from the front
+        if len(existing) > _MAX_SEEN_PER_SOURCE:
+            existing = existing[-_MAX_SEEN_PER_SOURCE:]
+        src["seen_ids"] = existing
         src["last_checked"] = datetime.now(timezone.utc).isoformat()
         self._save()
 
@@ -105,12 +87,9 @@ class FeedCursor:
             posts: if given, mark these post IDs as seen.
                    Without posts, only the timestamp is updated.
         """
-        now = datetime.now(timezone.utc).isoformat()
         if posts:
-            if source:
-                self.mark_seen(posts, source=source)
-            else:
-                self.mark_seen(posts, source="default")
+            self.mark_seen(posts, source=source or "default")
+        now = datetime.now(timezone.utc).isoformat()
         if source:
             src = self._source(source)
             src["last_checked"] = now

@@ -1,24 +1,16 @@
 # ABOUTME: Pattern-based feed rules for Moltbook agents (kill/select).
 # ABOUTME: Inspired by nn's kill file — auto-hide or auto-highlight posts by pattern.
 
-import json
 import re
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
-from moltbook.helpers import _author_name
-
-
-def _resolve_rules():
-    """Find the rules file, checking multiple locations."""
-    candidates = [
-        Path.cwd() / "eos" / "rules.json",
-        Path.home() / ".config" / "moltbook" / "rules.json",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return Path.home() / ".config" / "moltbook" / "rules.json"
+from moltbook.helpers import (
+    _author_name,
+    _submolt_name,
+    resolve_state_path,
+    load_json,
+    save_json,
+)
 
 
 def _match(pattern, text):
@@ -38,10 +30,7 @@ def _get_field(post, field):
     if field == "author":
         return _author_name(post.get("author"))
     if field == "submolt":
-        submolt = post.get("submolt")
-        if isinstance(submolt, dict):
-            return submolt.get("name", "")
-        return submolt or ""
+        return _submolt_name(post.get("submolt"))
     return post.get(field, "")
 
 
@@ -63,19 +52,12 @@ class FeedRules:
 
     def __init__(self, rules_path=None):
         if rules_path is None:
-            rules_path = _resolve_rules()
-        self.rules_path = Path(rules_path)
-        self._data = self._load()
-
-    def _load(self):
-        try:
-            return json.loads(self.rules_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"rules": []}
+            rules_path = resolve_state_path("rules.json")
+        self.rules_path = rules_path
+        self._data = load_json(rules_path, default=lambda: {"rules": []})
 
     def _save(self):
-        self.rules_path.parent.mkdir(parents=True, exist_ok=True)
-        self.rules_path.write_text(json.dumps(self._data, indent=2))
+        save_json(self.rules_path, self._data)
 
     @property
     def rules(self):
@@ -145,7 +127,6 @@ class FeedRules:
 
     def _rule_matches(self, rule, post):
         """Check if a single rule matches a post."""
-        # Submolt scoping
         submolts = rule.get("submolts")
         if submolts:
             post_submolt = _get_field(post, "submolt")
@@ -191,10 +172,10 @@ class FeedRules:
         when a parent is killed.
         """
         self.prune()
-        rules = [r for r in self._data.get("rules", []) if r["action"] == "kill"]
-        if not rules:
+        kill_rules = [r for r in self._data.get("rules", []) if r["action"] == "kill"]
+        if not kill_rules:
             return comments
-        return self._filter_comment_tree(comments, rules)
+        return self._filter_comment_tree(comments, kill_rules)
 
     def _filter_comment_tree(self, comments, kill_rules):
         result = []
@@ -203,9 +184,7 @@ class FeedRules:
             filtered_replies = (
                 self._filter_comment_tree(replies, kill_rules) if replies else []
             )
-            killed = any(
-                _match(r["pattern"], _get_field(c, r["field"])) for r in kill_rules
-            )
+            killed = any(self._rule_matches(r, c) for r in kill_rules)
             if killed:
                 result.extend(filtered_replies)
             else:

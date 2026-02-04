@@ -242,6 +242,32 @@ class TestFeedRulesComments(unittest.TestCase):
         self.assertIn("c2", ids)  # promoted
         self.assertIn("c3", ids)
 
+    def test_select_rules_ignored_in_comments(self):
+        rules = FeedRules(self.path)
+        rules.add("select", "author", "alice")
+        comments = [
+            {"id": "c1", "author": {"name": "alice"}, "content": "Hi", "replies": []},
+        ]
+        result = rules.apply_comments(comments)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], "c1")
+
+
+class TestFeedRulesCorruptFile(unittest.TestCase):
+    def test_corrupt_json_loads_defaults(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        tmp.close()
+        path = Path(tmp.name)
+        path.write_text("{{{not json")
+        rules = FeedRules(path)
+        self.assertEqual(rules.rules, [])
+        path.unlink(missing_ok=True)
+
+    def test_missing_file_loads_defaults(self):
+        path = Path("/tmp/nonexistent_rules_test_12345.json")
+        rules = FeedRules(path)
+        self.assertEqual(rules.rules, [])
+
 
 class TestFeedRulesSummary(unittest.TestCase):
     def test_empty_summary(self):

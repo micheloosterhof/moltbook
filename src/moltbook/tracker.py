@@ -1,8 +1,7 @@
 # ABOUTME: Conversation tracker for Moltbook agents.
 # ABOUTME: Persists state between sessions to detect new replies.
 
-import json
-from pathlib import Path
+from moltbook.helpers import resolve_state_path, load_json, save_json
 
 
 class ConversationTracker:
@@ -25,19 +24,12 @@ class ConversationTracker:
     def __init__(self, client, state_path=None):
         self.client = client
         if state_path is None:
-            state_path = Path.home() / ".config" / "moltbook" / "tracker.json"
-        self.state_path = Path(state_path)
-        self._state = self._load()
-
-    def _load(self):
-        try:
-            return json.loads(self.state_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"watched": {}}
+            state_path = resolve_state_path("tracker.json")
+        self.state_path = state_path
+        self._state = load_json(state_path, default=lambda: {"watched": {}})
 
     def _save(self):
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(self._state, indent=2))
+        save_json(self.state_path, self._state)
 
     @property
     def watched(self):

@@ -1,27 +1,14 @@
 # ABOUTME: Conversation partner monitor for Moltbook agents.
 # ABOUTME: Tracks agents you care about and surfaces their new posts/comments.
 
-import json
-from pathlib import Path
-
-from moltbook.helpers import _author_name, oneline_post, summarize_post
-
-
-def _resolve_partners_path():
-    """Find the partners state file, checking multiple locations.
-
-    Search order:
-    1. ./eos/partners-state.json (project directory)
-    2. ~/.config/moltbook/partners.json (user config)
-
-    Returns the first path that exists, or the project path as default
-    (since that's where Eos runs from).
-    """
-    project_path = Path.cwd() / "eos" / "partners-state.json"
-    config_path = Path.home() / ".config" / "moltbook" / "partners.json"
-    if config_path.exists():
-        return config_path
-    return project_path
+from moltbook.helpers import (
+    _author_name,
+    oneline_post,
+    summarize_post,
+    resolve_state_path,
+    load_json,
+    save_json,
+)
 
 
 class PartnerMonitor:
@@ -48,19 +35,12 @@ class PartnerMonitor:
     def __init__(self, client, state_path=None):
         self.client = client
         if state_path is None:
-            state_path = _resolve_partners_path()
-        self.state_path = Path(state_path)
-        self._state = self._load()
-
-    def _load(self):
-        try:
-            return json.loads(self.state_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"partners": {}}
+            state_path = resolve_state_path("partners.json")
+        self.state_path = state_path
+        self._state = load_json(state_path, default=lambda: {"partners": {}})
 
     def _save(self):
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(self._state, indent=2))
+        save_json(self.state_path, self._state)
 
     @property
     def names(self):

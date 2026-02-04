@@ -144,6 +144,21 @@ class TestFeedCursorCap(unittest.TestCase):
         stats = cursor.stats()
         self.assertLessEqual(stats["hot"]["seen_count"], _MAX_SEEN_PER_SOURCE)
 
+    def test_cap_keeps_newest_ids(self):
+        cursor = FeedCursor(self.path)
+        # Add old posts first
+        old_posts = _posts(_MAX_SEEN_PER_SOURCE, start=1)
+        cursor.mark_seen(old_posts, source="hot")
+        # Add new posts that push past the cap
+        new_posts = _posts(100, start=_MAX_SEEN_PER_SOURCE + 1)
+        cursor.mark_seen(new_posts, source="hot")
+        # The newest posts must survive the cap
+        result = cursor.unseen(new_posts, source="hot")
+        self.assertEqual(len(result), 0, "newest posts should be marked as seen")
+        # Some of the oldest posts should have been evicted
+        old_unseen = cursor.unseen(old_posts[:100], source="hot")
+        self.assertTrue(len(old_unseen) > 0, "oldest posts should be evicted")
+
 
 class TestFeedCursorSummary(unittest.TestCase):
     def test_empty_summary(self):

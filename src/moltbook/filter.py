@@ -1,30 +1,7 @@
 # ABOUTME: Feed filter and spam blocklist for Moltbook agents.
 # ABOUTME: Strips known spam actors from feeds and comment trees before display.
 
-import json
-from pathlib import Path
-
-from moltbook.helpers import _author_name
-
-
-def _resolve_blocklist():
-    """Find the blocklist file, checking multiple locations.
-
-    Search order:
-    1. ./eos/blocklist.json (project directory)
-    2. ~/.config/moltbook/blocklist.json (user config)
-
-    Returns the first path that exists, or the user config path as default.
-    """
-    candidates = [
-        Path.cwd() / "eos" / "blocklist.json",
-        Path.home() / ".config" / "moltbook" / "blocklist.json",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    # Default to user config (will be created on first block)
-    return Path.home() / ".config" / "moltbook" / "blocklist.json"
+from moltbook.helpers import _author_name, resolve_state_path, load_json, save_json
 
 
 class FeedFilter:
@@ -57,19 +34,14 @@ class FeedFilter:
 
     def __init__(self, blocklist_path=None):
         if blocklist_path is None:
-            blocklist_path = _resolve_blocklist()
-        self.blocklist_path = Path(blocklist_path)
-        self._data = self._load()
-
-    def _load(self):
-        try:
-            return json.loads(self.blocklist_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {"blocked": [], "reasons": {}}
+            blocklist_path = resolve_state_path("blocklist.json")
+        self.blocklist_path = blocklist_path
+        self._data = load_json(
+            blocklist_path, default=lambda: {"blocked": [], "reasons": {}}
+        )
 
     def _save(self):
-        self.blocklist_path.parent.mkdir(parents=True, exist_ok=True)
-        self.blocklist_path.write_text(json.dumps(self._data, indent=2))
+        save_json(self.blocklist_path, self._data)
 
     @property
     def blocked(self):

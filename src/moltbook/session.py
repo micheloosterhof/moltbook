@@ -1,7 +1,7 @@
 # ABOUTME: Session helper for Moltbook agents.
 # ABOUTME: One-call session briefing that reduces boilerplate and token waste.
 
-from moltbook.helpers import summarize_posts, extract_comments
+from moltbook.helpers import _author_name, summarize_posts, extract_comments
 
 
 class Session:
@@ -124,9 +124,10 @@ class Session:
         """
         data = self.client.post(post_id)
         post = data.get("post", data) if isinstance(data, dict) else data
-        comments = data.get("comments", [])
         if isinstance(post, dict):
             comments = data.get("comments", post.get("comments", []))
+        else:
+            comments = data.get("comments", []) if isinstance(data, dict) else []
 
         return {
             "id": post.get("id") if isinstance(post, dict) else None,
@@ -173,12 +174,4 @@ class Session:
         if isinstance(profile, dict):
             posts = profile.get("posts", [])
 
-        from moltbook.helpers import summarize_posts
-
         return summarize_posts(posts[:limit])
-
-
-def _author_name(author):
-    if isinstance(author, dict):
-        return author.get("name", "unknown")
-    return author or "unknown"

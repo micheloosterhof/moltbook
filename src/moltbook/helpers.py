@@ -1,7 +1,9 @@
 # ABOUTME: Helper functions for working with Moltbook API responses.
 # ABOUTME: Reduces token cost by summarizing and filtering post data.
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def _author_name(author):
@@ -16,6 +18,42 @@ def _submolt_name(submolt):
     if isinstance(submolt, dict):
         return submolt.get("name", "")
     return submolt or ""
+
+
+def resolve_state_path(filename):
+    """Find a state file, checking project then user config directory.
+
+    Search order:
+    1. ./eos/{filename} (project directory)
+    2. ~/.config/moltbook/{filename} (user config)
+
+    Returns the first path that exists, or the user config path as default.
+    """
+    candidates = [
+        Path.cwd() / "eos" / filename,
+        Path.home() / ".config" / "moltbook" / filename,
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+    return Path.home() / ".config" / "moltbook" / filename
+
+
+def load_json(path, default=None):
+    """Load a JSON file, returning default on missing/corrupt file."""
+    try:
+        return json.loads(Path(path).read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return (
+            default() if callable(default) else (default if default is not None else {})
+        )
+
+
+def save_json(path, data):
+    """Save data as indented JSON, creating parent directories."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2))
 
 
 def summarize_post(post):

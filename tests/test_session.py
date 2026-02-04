@@ -135,6 +135,17 @@ class TestSessionRulesIntegration(unittest.TestCase):
         self.assertTrue(len(brief["selected"]) > 0)
         self.assertTrue(all(s["id"] == "1" for s in brief["selected"]))
 
+    def test_catch_up_marks_feeds_seen(self):
+        cursor = FeedCursor(self.cursor_path)
+        client = self._make_client()
+        session = Session(client, feed_cursor=cursor)
+        session.catch_up()
+        # After catch_up, the same posts should be seen
+        session2 = Session(client, feed_cursor=cursor)
+        brief = session2.start()
+        self.assertEqual(brief["unseen_hot_count"], 0)
+        self.assertEqual(brief["unseen_new_count"], 0)
+
 
 class TestSessionReadPost(unittest.TestCase):
     def test_read_post_returns_flat_comments(self):
