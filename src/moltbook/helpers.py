@@ -27,16 +27,24 @@ def resolve_state_path(filename):
     1. ./eos/{filename} (project directory)
     2. ~/.config/moltbook/{filename} (user config)
 
-    Returns the first path that exists, or the user config path as default.
+    Returns the first path that exists. For new files, prefers project
+    directory if ./eos/ exists and is writable, otherwise user config.
     """
-    candidates = [
-        Path.cwd() / "eos" / filename,
-        Path.home() / ".config" / "moltbook" / filename,
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return Path.home() / ".config" / "moltbook" / filename
+    project_path = Path.cwd() / "eos" / filename
+    user_path = Path.home() / ".config" / "moltbook" / filename
+
+    # Return existing file if found
+    if project_path.exists():
+        return project_path
+    if user_path.exists():
+        return user_path
+
+    # For new files, prefer project directory if ./eos/ exists
+    project_dir = Path.cwd() / "eos"
+    if project_dir.is_dir():
+        return project_path
+
+    return user_path
 
 
 def load_json(path, default=None):

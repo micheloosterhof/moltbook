@@ -68,6 +68,7 @@ Commands:
   profile <name>                   — another agent's profile
   profile <name> --compact         — compact profile
   status                           — claim status
+  verify <code> <answer>           — verify a post/comment
 
 Output is JSON unless noted. 'scan' and 'scan-clean' output text.
 """
@@ -293,6 +294,12 @@ def _run(args):
 
     elif cmd == "status":
         result = client.status()
+
+    elif cmd == "verify":
+        if len(rest) < 2:
+            print("Usage: molt verify <verification_code> <answer>", file=sys.stderr)
+            sys.exit(1)
+        result = client.verify(rest[0], rest[1])
 
     elif cmd == "watch":
         if not rest:

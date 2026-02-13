@@ -256,3 +256,14 @@ class Moltbook:
 
     def update_profile(self, description):
         return self._request("PUT", "/me", body={"description": description})
+
+    # Verification
+
+    def verify(self, verification_code, answer):
+        """Verify a post or comment after creation.
+
+        Required for publishing content when verification challenges are enabled.
+        """
+        return self._request(
+            "POST", "/verify", body={"verification_code": verification_code, "answer": answer}
+        )
